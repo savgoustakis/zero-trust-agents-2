@@ -1,0 +1,15 @@
+[
+    {"name": "order_id", "type": "STRING", "mode": "NULLABLE"},
+    {"name": "customer_id", "type": "STRING", "mode": "NULLABLE"},
+    {"name": "total_amount", "type": "FLOAT", "mode": "NULLABLE"},
+    {
+        "name": "items",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "fields": [
+            {"name": "name", "type": "STRING", "mode": "NULLABLE"},
+            {"name": "category", "type": "STRING", "mode": "NULLABLE"},
+            {"name": "price", "type": "FLOAT", "mode": "NULLABLE"}
+        ]
+    }
+]
