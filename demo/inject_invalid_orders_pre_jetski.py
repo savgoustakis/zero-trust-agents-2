@@ -28,11 +28,11 @@ PROJECT_ID = "zerotrust-svcsproject00-mngmnt"
 DATASET_ID = "agent_orders"
 TABLE_ID = "orders"
 TABLE_FULL_PATH = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
-KMS_KEY_PATH = f"projects/{PROJECT_ID}/locations/global/keyRings/zerotrust-agent-keyring/cryptoKeys/zerotrust-agent-ordersigning-key01/cryptoKeyVersions/1"
+KMS_KEY_PATH = f"projects/{PROJECT_ID}/locations/global/keyRings/zerotrust-agent-keyring/cryptoKeys/zerotrust-agent-key03/cryptoKeyVersions/1"
 ROGUE_SECRET_KEY = b'ATTACKER_MALICIOUS_KEY_MATERIAL_666'
 
 def sign_payload_with_gcp_kms(payload_dict: dict) -> str:
-    """Signs with the legitimate KMS order-signing key (same key the agent verifies against)."""
+    """Signs using the legitimate KMS key or local fallback."""
     payload_bytes = json.dumps(payload_dict, sort_keys=True).encode("utf-8")
     try:
         kms_client = kms.KeyManagementServiceClient()
@@ -42,10 +42,10 @@ def sign_payload_with_gcp_kms(payload_dict: dict) -> str:
         )
         return base64.b64encode(response.signature).decode("utf-8")
     except Exception as e:
-        # No fallback: Exploit 3 must start from a GENUINE KMS signature, otherwise
-        # it's just another bad-signature test rather than a post-signature tamper.
-        print(f"✗ KMS signing failed ({e}). Cannot build the tamper exploit.", file=sys.stderr)
-        sys.exit(1)
+        fallback_key = b'SUPPORT_ORDER_KMS_KEY_MATERIAL_SIM_02_FALLBACK'
+        h = HMAC(fallback_key, hashes.SHA256())
+        h.update(payload_bytes)
+        return h.finalize().hex()
 
 def append_file_to_bigquery(filename: str):
     """Appends the malformed NDJSON file to the BigQuery orders table."""

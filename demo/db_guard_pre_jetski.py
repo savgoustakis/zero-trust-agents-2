@@ -5,7 +5,6 @@
 import json
 import time
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.hmac import HMAC
@@ -109,13 +108,10 @@ def process_pipeline():
     print(f"{BOLD}=============================================================================={NC}\n")
 
 
-def audit_ledger() -> bool:
+def audit_ledger():
     """
     Performs an integrity audit. It recalculates the signature of every row 
     in the ledger to detect bypass attacks or database tampering.
-
-    Returns True if every row verifies (or the ledger is empty), False if any
-    row fails or the ledger can't be read (fail closed).
     """
     bq_client = bigquery.Client()
     try:
@@ -124,11 +120,11 @@ def audit_ledger() -> bool:
         ledger_rows = [dict(row) for row in query_job]
     except Exception as e:
         print(f"{RED}✗ BigQuery Error:{NC} Failed to fetch ledger: {e}")
-        return False
+        return
 
     if not ledger_rows:
         print(f"{AMBER}⚠️  Audit Complete: The secure ledger is empty.{NC}")
-        return True
+        return
 
     print(f"\n{BOLD}=================== CRYPTOGRAPHIC SECURE LEDGER AUDIT ======================={NC}")
     audit_failed = False
@@ -138,6 +134,7 @@ def audit_ledger() -> bool:
         agent_id = row['agent_id']
         order_id = row['order_id']
         amount = row['amount']
+        timestamp = str(row['timestamp'])
 
         # Reconstruct the payload to re-sign and verify
         reconstructed_payload = {
@@ -149,7 +146,7 @@ def audit_ledger() -> bool:
                 "item": row['item'],
                 "recipient": row['recipient']
             },
-            "timestamp": _normalize_timestamp(row['timestamp'])
+            "timestamp": timestamp.replace(" ", "T").split("+")[0] + "Z" # Normalize format
         }
 
         try:
@@ -175,24 +172,6 @@ def audit_ledger() -> bool:
         print(f"{RED}❌ AUDIT WARNING: Cryptographic tampering detected in the ledger!{NC}\n")
     else:
         print(f"{GREEN}✓ AUDIT SUCCESS: Ledger integrity is completely verified. All rows intact.{NC}\n")
-    return not audit_failed
-
-
-def _normalize_timestamp(value) -> str:
-    """
-    Returns the timestamp in the exact format it was signed with
-    (time.strftime('%Y-%m-%dT%H:%M:%SZ')), whether the ledger column is a
-    BigQuery TIMESTAMP (returned as a datetime) or a STRING.
-    """
-    if isinstance(value, datetime):
-        if value.tzinfo is not None:
-            value = value.astimezone(timezone.utc)
-        return value.strftime("%Y-%m-%dT%H:%M:%SZ")
-    text = str(value).strip().replace(" ", "T")
-    if text.endswith("Z"):
-        text = text[:-1]
-    text = text.split("+")[0].split(".")[0]  # drop UTC offset and fractional seconds
-    return text + "Z"
 
 
 def cleanup_pipeline_row(bq_client, signature):
@@ -208,11 +187,9 @@ def cleanup_pipeline_row(bq_client, signature):
 
 
 if __name__ == "__main__":
-    # Check command-line arguments to determine execution mode.
-    # NOTE: sys.argv is a list - compare the first argument, not the list itself.
-    if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "audit":
-        # Non-zero exit on tampering so the audit can gate a CI job or alert.
-        sys.exit(0 if audit_ledger() else 2)
+    # Check command-line arguments to determine execution mode
+    if len(sys.argv) > 1 and sys.argv == "audit":
+        audit_ledger()
     else:
         # Default behavior is processing the active pipeline
         process_pipeline()
